@@ -1,13 +1,35 @@
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection, OpenFlags};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::models::{Task, TaskType, TaskStatus, StartBucket, apple_to_date_string, APPLE_EPOCH_OFFSET, Project, Area, Tag};
+use crate::models::{Task, TaskType, TaskStatus, StartBucket, real_ts_to_date_string, thingsdate_to_date_string, Project, Area, Tag};
 
 /// Default Things 3 database path.
+///
+/// The database lives inside a `ThingsData-*` subdirectory whose suffix
+/// varies per install. We glob for it rather than hardcoding.
 fn default_db_path() -> PathBuf {
     let home = dirs::home_dir().expect("Could not determine home directory");
-    home.join("Library/Group Containers/JLMPQHK86H.com.culturedcode.ThingsMac/Things Database.thingsdatabase/main.sqlite")
+    let container = home.join("Library/Group Containers/JLMPQHK86H.com.culturedcode.ThingsMac");
+
+    if let Ok(entries) = std::fs::read_dir(&container) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            if name_str.starts_with("ThingsData-") {
+                let candidate = entry.path()
+                    .join("Things Database.thingsdatabase")
+                    .join("main.sqlite");
+                if candidate.exists() {
+                    return candidate;
+                }
+            }
+        }
+    }
+
+    // Fallback: try without ThingsData- subdirectory (older installs)
+    container.join("Things Database.thingsdatabase/main.sqlite")
 }
 
 /// Open a read-only connection to the Things 3 database.
@@ -68,24 +90,11 @@ fn row_to_task(row: &rusqlite::Row) -> rusqlite::Result<Task> {
         tags: Vec::new(), // filled in after
         checklist_count: row.get(16)?,
         checklist_done: row.get(17)?,
-        created_date: apple_to_date_string(row.get(10)?),
-        modified_date: apple_to_date_string(row.get(11)?),
-        start_date: apple_to_date_string(row.get(12)?),
-        deadline: row.get::<_, Option<i32>>(13)?.map(|d| {
-            // deadline is stored as an integer YYYYMMDD-style offset or as a
-            // Core Data timestamp depending on the version. In practice Things
-            // stores it as a fuzzy date integer (days since 2001-01-01 are NOT
-            // used here). Let's handle both.
-            // Actually, the deadline column in Things stores an integer like
-            // 132930000 which is a Core Data timestamp.
-            // We'll try to treat small values as already-formatted and large as timestamps.
-            if d > 30_000_000 {
-                apple_to_date_string(Some(f64::from(d))).unwrap_or_else(|| d.to_string())
-            } else {
-                d.to_string()
-            }
-        }),
-        completion_date: apple_to_date_string(row.get(14)?),
+        created_date: real_ts_to_date_string(row.get(10)?),
+        modified_date: real_ts_to_date_string(row.get(11)?),
+        start_date: thingsdate_to_date_string(row.get(12)?),
+        deadline: thingsdate_to_date_string(row.get(13)?),
+        completion_date: real_ts_to_date_string(row.get(14)?),
         index: row.get(15)?,
     })
 }
@@ -133,7 +142,7 @@ fn query_tasks(conn: &Connection, where_clause: &str, task_params: &[&dyn rusqli
 pub fn tasks_today(conn: &Connection) -> Result<Vec<Task>> {
     query_tasks(
         conn,
-        "t.type = 0 AND t.status = 0 AND t.start = 1 AND t.trashed = 0",
+        "t.type = 0 AND t.status = 0 AND t.start = 1 AND t.startDate IS NOT NULL AND t.trashed = 0",
         &[],
     )
 }
@@ -176,14 +185,13 @@ pub fn tasks_logbook(conn: &Connection, since: Option<&str>, limit: usize) -> Re
             .unwrap()
             .and_utc()
             .timestamp();
-        let apple_ts = unix_ts - APPLE_EPOCH_OFFSET;
         let limit_i64 = i64::try_from(limit).unwrap_or(i64::MAX);
         let sql = format!(
             "{TASK_SELECT} WHERE {base_where} AND t.stopDate >= ?1 ORDER BY t.stopDate DESC LIMIT ?2"
         );
         let mut stmt = conn.prepare(&sql)?;
         let mut tasks: Vec<Task> = stmt
-            .query_map(params![apple_ts, limit_i64], row_to_task)?
+            .query_map(params![unix_ts, limit_i64], row_to_task)?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         fill_tags(conn, &mut tasks)?;
         Ok(tasks)
@@ -264,14 +272,6 @@ pub fn tasks_by_uuid_prefix(conn: &Connection, prefix: &str) -> Result<Vec<Task>
     )
 }
 
-pub fn tasks_by_title_substring(conn: &Connection, substr: &str) -> Result<Vec<Task>> {
-    let pattern = format!("%{substr}%");
-    query_tasks(
-        conn,
-        "t.title LIKE ?1 COLLATE NOCASE AND t.type = 0 AND t.status = 0 AND t.trashed = 0",
-        &[&pattern],
-    )
-}
 
 pub fn search_tasks(conn: &Connection, query: &str, include_completed: bool) -> Result<Vec<Task>> {
     let pattern = format!("%{query}%");
@@ -298,14 +298,7 @@ pub fn projects_by_uuid_prefix(conn: &Connection, prefix: &str) -> Result<Vec<Ta
     )
 }
 
-pub fn projects_by_title_substring(conn: &Connection, substr: &str) -> Result<Vec<Task>> {
-    let pattern = format!("%{substr}%");
-    query_tasks(
-        conn,
-        "t.title LIKE ?1 COLLATE NOCASE AND t.type = 1 AND t.trashed = 0",
-        &[&pattern],
-    )
-}
+
 
 pub fn all_projects(conn: &Connection, area_filter: Option<&str>) -> Result<Vec<Project>> {
     let area_join = if area_filter.is_some() {
@@ -351,13 +344,7 @@ pub fn all_projects(conn: &Connection, area_filter: Option<&str>) -> Result<Vec<
                 area_uuid: row.get(4)?,
                 area_title: row.get(5)?,
                 tags: Vec::new(),
-                deadline: row.get::<_, Option<i32>>(6)?.map(|d| {
-                    if d > 30_000_000 {
-                        apple_to_date_string(Some(f64::from(d))).unwrap_or_else(|| d.to_string())
-                    } else {
-                        d.to_string()
-                    }
-                }),
+                deadline: thingsdate_to_date_string(row.get(6)?),
                 task_count: row.get(7)?,
                 completed_count: row.get(8)?,
             })
@@ -389,6 +376,28 @@ pub fn all_areas(conn: &Connection) -> Result<Vec<Area>> {
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(areas)
+}
+
+pub fn titles_by_uuids(conn: &Connection, uuids: &[&str]) -> Result<HashMap<String, String>> {
+    if uuids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let placeholders: Vec<&str> = uuids.iter().map(|_| "?").collect();
+    let sql = format!(
+        "SELECT uuid, title FROM TMTask WHERE uuid IN ({})",
+        placeholders.join(",")
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let params: Vec<&dyn rusqlite::types::ToSql> = uuids.iter().map(|u| u as &dyn rusqlite::types::ToSql).collect();
+    let rows = stmt.query_map(params.as_slice(), |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut map = HashMap::new();
+    for row in rows {
+        let (uuid, title) = row?;
+        map.insert(uuid, title);
+    }
+    Ok(map)
 }
 
 pub fn all_tags(conn: &Connection) -> Result<Vec<Tag>> {

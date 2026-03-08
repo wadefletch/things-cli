@@ -14,20 +14,20 @@ pub fn complete(conn: &Connection, id: &str, cancel: bool) -> Result<()> {
         bail!("Auth token required. Set one with: things auth set <token>");
     };
 
-    let task = resolve::resolve_task(conn, id)?;
+    let item = resolve::resolve_any(conn, id)?;
 
     let url = if cancel {
-        things_url::cancel_task(&task.uuid, token)
+        things_url::cancel_task(&item.uuid, token)
     } else {
-        things_url::complete_task(&task.uuid, token)
+        things_url::complete_task(&item.uuid, token)
     };
 
     open::that(&url)?;
 
     if cancel {
-        println!("Canceled: {}", task.title);
+        println!("Canceled: {}", item.title);
     } else {
-        println!("Completed: {}", task.title);
+        println!("Completed: {}", item.title);
     }
     Ok(())
 }

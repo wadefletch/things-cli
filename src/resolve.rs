@@ -3,42 +3,68 @@ use rusqlite::Connection;
 
 use crate::db;
 use crate::models::Task;
+use crate::shortid::{self, RefKind};
 
-/// Resolve an identifier to a single task.
-/// Accepts UUID prefix (like git short SHA) or case-insensitive title substring.
-/// If ambiguous, returns an error listing matches.
-pub fn resolve_task(conn: &Connection, identifier: &str) -> Result<Task> {
-    // Try UUID prefix match first
-    let uuid_matches = db::tasks_by_uuid_prefix(conn, identifier)?;
-    if uuid_matches.len() == 1 {
-        return Ok(uuid_matches.into_iter().next().unwrap());
+/// Resolve any ref or UUID prefix to a task or project.
+/// The ref prefix (t/p) determines the type. Bare UUID prefixes default to task.
+pub fn resolve_any(conn: &Connection, identifier: &str) -> Result<Task> {
+    if let Some(entry) = shortid::resolve(identifier) {
+        let matches = match entry.kind {
+            RefKind::Task => db::tasks_by_uuid_prefix(conn, &entry.uuid)?,
+            RefKind::Project => db::projects_by_uuid_prefix(conn, &entry.uuid)?,
+        };
+        if matches.len() == 1 {
+            return Ok(matches.into_iter().next().unwrap());
+        }
     }
-    if uuid_matches.len() > 1 {
+
+    // Bare UUID prefix — try task first (90% case), then project
+    let task_matches = db::tasks_by_uuid_prefix(conn, identifier)?;
+    if task_matches.len() == 1 {
+        return Ok(task_matches.into_iter().next().unwrap());
+    }
+    if task_matches.len() > 1 {
         bail!(
             "Ambiguous UUID prefix '{}'. Matches:\n{}",
             identifier,
-            format_matches(&uuid_matches)
+            format_matches(&task_matches)
         );
     }
 
-    // Try title substring match
-    let title_matches = db::tasks_by_title_substring(conn, identifier)?;
-    if title_matches.len() == 1 {
-        return Ok(title_matches.into_iter().next().unwrap());
+    let project_matches = db::projects_by_uuid_prefix(conn, identifier)?;
+    if project_matches.len() == 1 {
+        return Ok(project_matches.into_iter().next().unwrap());
     }
-    if title_matches.len() > 1 {
+    if project_matches.len() > 1 {
         bail!(
-            "Ambiguous title '{}'. Matches:\n{}",
+            "Ambiguous UUID prefix '{}'. Matches:\n{}",
             identifier,
-            format_matches(&title_matches)
+            format_matches(&project_matches)
         );
     }
 
-    bail!("No task found matching '{identifier}'")
+    bail!("No task or project found matching '{identifier}'")
 }
 
-/// Resolve an identifier to a single project.
+/// Resolve specifically to a project.
+/// Used by `things project` which always expects a project.
 pub fn resolve_project(conn: &Connection, identifier: &str) -> Result<Task> {
+    if let Some(entry) = shortid::resolve(identifier) {
+        match entry.kind {
+            RefKind::Project => {
+                let matches = db::projects_by_uuid_prefix(conn, &entry.uuid)?;
+                if matches.len() == 1 {
+                    return Ok(matches.into_iter().next().unwrap());
+                }
+            }
+            RefKind::Task => {
+                bail!(
+                    "'{identifier}' is a task ref, not a project. Use `things show {identifier}` instead."
+                );
+            }
+        }
+    }
+
     let uuid_matches = db::projects_by_uuid_prefix(conn, identifier)?;
     if uuid_matches.len() == 1 {
         return Ok(uuid_matches.into_iter().next().unwrap());
@@ -47,19 +73,7 @@ pub fn resolve_project(conn: &Connection, identifier: &str) -> Result<Task> {
         bail!(
             "Ambiguous UUID prefix '{}'. Matches:\n{}",
             identifier,
-            format_project_matches(&uuid_matches)
-        );
-    }
-
-    let title_matches = db::projects_by_title_substring(conn, identifier)?;
-    if title_matches.len() == 1 {
-        return Ok(title_matches.into_iter().next().unwrap());
-    }
-    if title_matches.len() > 1 {
-        bail!(
-            "Ambiguous project name '{}'. Matches:\n{}",
-            identifier,
-            format_project_matches(&title_matches)
+            format_matches(&uuid_matches)
         );
     }
 
@@ -72,8 +86,4 @@ fn format_matches(tasks: &[Task]) -> String {
         .map(|t| format!("  {} {}", &t.uuid[..8], t.title))
         .collect::<Vec<_>>()
         .join("\n")
-}
-
-fn format_project_matches(tasks: &[Task]) -> String {
-    format_matches(tasks)
 }

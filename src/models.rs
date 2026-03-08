@@ -1,21 +1,35 @@
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
-/// Seconds between Unix epoch (1970-01-01) and Apple Core Data epoch (2001-01-01).
-pub const APPLE_EPOCH_OFFSET: i64 = 978_307_200;
-
-/// Convert an Apple Core Data timestamp (f64 seconds since 2001-01-01) to a `DateTime<Utc>`.
+/// Convert a Things 3 REAL timestamp to `DateTime<Utc>`.
 ///
-/// Core Data stores timestamps as REAL (f64). Actual values are ~10^9 (well
-/// within f64's exact integer range of 2^53), so the f64→i64 truncation is
-/// lossless for any real-world timestamp.
+/// Things stores `creationDate`, `userModificationDate`, and `stopDate`
+/// as REAL columns containing Unix timestamps (seconds since 1970-01-01).
 #[allow(clippy::cast_possible_truncation)]
-pub fn apple_to_datetime(ts: Option<f64>) -> Option<DateTime<Utc>> {
-    ts.and_then(|t| DateTime::from_timestamp(t as i64 + APPLE_EPOCH_OFFSET, 0))
+pub fn real_ts_to_datetime(ts: Option<f64>) -> Option<DateTime<Utc>> {
+    ts.and_then(|t| DateTime::from_timestamp(t as i64, 0))
 }
 
-pub fn apple_to_date_string(ts: Option<f64>) -> Option<String> {
-    apple_to_datetime(ts).map(|dt| dt.format("%Y-%m-%d").to_string())
+pub fn real_ts_to_date_string(ts: Option<f64>) -> Option<String> {
+    real_ts_to_datetime(ts).map(|dt| dt.format("%Y-%m-%d").to_string())
+}
+
+/// Decode a Things 3 "Things date" INTEGER into an ISO date string.
+///
+/// `startDate` and `deadline` are stored as bitpacked integers:
+///   `YYYYYYYYYYYMMMMDDDDD0000000` in binary.
+/// Year occupies bits 16+, month bits 12-15, day bits 7-11.
+pub fn thingsdate_to_date_string(val: Option<i32>) -> Option<String> {
+    val.and_then(|v| {
+        let year = (v >> 16) & 0x7FF;
+        let month = (v >> 12) & 0xF;
+        let day = (v >> 7) & 0x1F;
+        if year > 0 && month > 0 && day > 0 {
+            Some(format!("{year}-{month:02}-{day:02}"))
+        } else {
+            None
+        }
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

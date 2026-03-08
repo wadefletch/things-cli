@@ -40,7 +40,7 @@ pub fn show_project(conn: &Connection, name: &str, json: bool) -> Result<()> {
             println!("\n{}", "No tasks.".dimmed());
         } else {
             println!();
-            output::print_tasks(&tasks, false)?;
+            output::print_tasks_scoped(&tasks, false, &project.uuid)?;
         }
     }
     Ok(())

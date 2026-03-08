@@ -25,7 +25,7 @@ pub fn someday(conn: &Connection, json: bool) -> Result<()> {
 
 pub fn logbook(conn: &Connection, since: Option<&str>, limit: usize, json: bool) -> Result<()> {
     let tasks = db::tasks_logbook(conn, since, limit)?;
-    output::print_tasks(&tasks, json)
+    output::print_tasks_with_legend(&tasks, json, true)
 }
 
 pub fn filtered(

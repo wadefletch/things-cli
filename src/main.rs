@@ -64,6 +64,7 @@ mod db;
 mod models;
 mod output;
 mod resolve;
+mod shortid;
 mod things_url;
 
 use anyhow::Result;
@@ -139,6 +140,30 @@ fn main() -> Result<()> {
                     query,
                     include_completed,
                 } => commands::search::search(&conn, &query, include_completed, cli.json)?,
+                Command::Edit {
+                    id,
+                    title,
+                    notes,
+                    when_date,
+                    deadline,
+                    tags,
+                    list,
+                    heading,
+                    reveal,
+                } => {
+                    commands::edit::edit(
+                        &conn,
+                        &id,
+                        title.as_deref(),
+                        notes.as_deref(),
+                        when_date.as_deref(),
+                        deadline.as_deref(),
+                        tags.as_deref(),
+                        list.as_deref(),
+                        heading.as_deref(),
+                        reveal,
+                    )?;
+                }
                 Command::Complete { id, cancel } => {
                     commands::complete::complete(&conn, &id, cancel)?;
                 }
@@ -150,6 +175,7 @@ fn main() -> Result<()> {
                 }
                 Command::Areas => commands::areas::list_areas(&conn, cli.json)?,
                 Command::Tags => commands::tags::list_tags(&conn, cli.json)?,
+                Command::Refs { clear } => commands::refs::list_refs(&conn, clear)?,
                 Command::Add { .. } | Command::Auth { .. } => {
                     // Already handled in the outer match
                 }

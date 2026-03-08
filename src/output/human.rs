@@ -1,73 +1,126 @@
+use std::collections::HashMap;
+
 use colored::Colorize;
-use comfy_table::{presets::NOTHING, Cell, Table};
 
 use crate::models::{TaskStatus, Task, Project, Area, Tag};
 
-const fn status_icon(status: TaskStatus) -> &'static str {
+fn checkbox(status: TaskStatus) -> &'static str {
     match status {
-        TaskStatus::Open => "○",
-        TaskStatus::Completed => "✓",
-        TaskStatus::Canceled => "✗",
+        TaskStatus::Open => "- [ ]",
+        TaskStatus::Completed => "- [x]",
+        TaskStatus::Canceled => "- [-]",
     }
 }
 
-fn context_label(task: &Task) -> String {
-    task.project_title
-        .as_deref()
-        .or(task.area_title.as_deref())
-        .unwrap_or("").to_owned()
+fn format_ref(
+    task: &Task,
+    ref_id: Option<&String>,
+    project_refs: &HashMap<String, String>,
+    scoped_project: Option<&str>,
+) -> String {
+    let mut attrs: Vec<String> = Vec::new();
+
+    if let Some(id) = ref_id {
+        attrs.push(format!("ref={id}"));
+    }
+
+    if let Some(ref puuid) = task.project_uuid {
+        let is_scoped = scoped_project.is_some_and(|s| s == puuid.as_str());
+        if !is_scoped {
+            if let Some(pref) = project_refs.get(puuid) {
+                attrs.push(format!("project={pref}"));
+            }
+        }
+    } else if let Some(ref area) = task.area_title {
+        attrs.push(format!("area=\"{area}\""));
+    }
+
+    if !task.tags.is_empty() {
+        let tags = task.tags.join(",");
+        attrs.push(format!("tags=\"{tags}\""));
+    }
+
+    if let Some(ref d) = task.deadline {
+        attrs.push(format!("deadline=\"{d}\""));
+    }
+
+    if task.checklist_count > 0 {
+        attrs.push(format!("checklist=\"{}/{}\"", task.checklist_done, task.checklist_count));
+    }
+
+    if let Some(ref notes) = task.notes {
+        let oneline: String = notes
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        if !oneline.is_empty() {
+            let truncated = if oneline.len() > 80 {
+                format!("{}…", &oneline[..oneline.floor_char_boundary(80)])
+            } else {
+                oneline
+            };
+            attrs.push(format!("notes=\"{truncated}\""));
+        }
+    }
+
+    if attrs.is_empty() {
+        String::new()
+    } else {
+        format!(" [{}]", attrs.join(", "))
+    }
 }
 
-pub fn print_tasks(tasks: &[Task]) {
+pub fn print_tasks(
+    tasks: &[Task],
+    show_legend: bool,
+    short_ids: &[String],
+    project_refs: &HashMap<String, String>,
+    scoped_project: Option<&str>,
+) {
     if tasks.is_empty() {
         println!("{}", "No tasks found.".dimmed());
         return;
     }
 
-    let mut table = Table::new();
-    table.load_preset(NOTHING);
-
-    for task in tasks {
-        let icon = match task.status {
-            TaskStatus::Open => status_icon(task.status).blue().to_string(),
-            TaskStatus::Completed => status_icon(task.status).green().to_string(),
-            TaskStatus::Canceled => status_icon(task.status).red().to_string(),
-        };
-
-        let ctx = context_label(task);
-        let deadline_str = task
-            .deadline
-            .as_ref()
-            .map(|d| format!("due: {d}"))
-            .unwrap_or_default();
-
-        let tags_str = if task.tags.is_empty() {
-            String::new()
-        } else {
-            task.tags.iter().map(|t| format!("#{t}")).collect::<Vec<_>>().join(" ")
-        };
-
-        let meta = [ctx, tags_str, deadline_str]
-            .into_iter()
-            .filter(|s| !s.is_empty())
-            .collect::<Vec<_>>()
-            .join("  ");
-
-        table.add_row(vec![
-            Cell::new(&icon),
-            Cell::new(&task.title),
-            Cell::new(meta.dimmed().to_string()),
-        ]);
+    if show_legend && tasks.iter().any(|t| t.status == TaskStatus::Canceled) {
+        println!("{}", "[x] completed  [-] canceled".dimmed());
+        println!();
     }
 
-    println!("{table}");
+    let mut used_project_refs: Vec<(&str, &str)> = Vec::new();
+    let mut seen_projects = std::collections::HashSet::new();
+
+    for (i, task) in tasks.iter().enumerate() {
+        let cb = checkbox(task.status);
+        let ref_str = format_ref(task, short_ids.get(i), project_refs, scoped_project);
+        println!("{cb} {}{}", task.title, ref_str.dimmed());
+
+        if let Some(ref puuid) = task.project_uuid {
+            let is_scoped = scoped_project.is_some_and(|s| s == puuid.as_str());
+            if !is_scoped {
+                if let Some(pref) = project_refs.get(puuid) {
+                    if seen_projects.insert(puuid.as_str()) {
+                        let name = task.project_title.as_deref().unwrap_or("");
+                        used_project_refs.push((pref.as_str(), name));
+                    }
+                }
+            }
+        }
+    }
+
+    if !used_project_refs.is_empty() {
+        println!();
+        println!("{}", "Projects".dimmed());
+        for (pref, name) in &used_project_refs {
+            println!("  {:<6} {}", pref.dimmed(), name.dimmed());
+        }
+    }
 }
 
 pub fn print_task_detail(task: &Task) {
-    let icon = status_icon(task.status);
-    println!("{icon} {}", task.title.bold());
+    let cb = checkbox(task.status);
+    println!("{cb} {}", task.title.bold());
     println!("  UUID:    {}", &task.uuid);
-    println!("  Status:  {:?}", task.status);
 
     if let Some(ref proj) = task.project_title {
         println!("  Project: {proj}");
@@ -76,7 +129,7 @@ pub fn print_task_detail(task: &Task) {
         println!("  Area:    {area}");
     }
     if !task.tags.is_empty() {
-        let tags = task.tags.join(", ");
+        let tags = task.tags.iter().map(|t| format!("#{t}")).collect::<Vec<_>>().join(" ");
         println!("  Tags:    {tags}");
     }
     if let Some(ref d) = task.start_date {
@@ -98,9 +151,12 @@ pub fn print_task_detail(task: &Task) {
         );
     }
     if let Some(ref notes) = task.notes {
-        if !notes.is_empty() {
+        let trimmed = notes.trim();
+        if !trimmed.is_empty() {
             println!();
-            println!("{notes}");
+            for line in trimmed.lines() {
+                println!("  {line}");
+            }
         }
     }
 }
@@ -111,32 +167,22 @@ pub fn print_projects(projects: &[Project]) {
         return;
     }
 
-    let mut table = Table::new();
-    table.load_preset(NOTHING);
-
     for project in projects {
-        let area = project.area_title.as_deref().unwrap_or("");
-        let counts = format!("{} tasks", project.task_count);
-        let deadline_str = project
-            .deadline
-            .as_ref()
-            .map(|d| format!("due: {d}"))
-            .unwrap_or_default();
+        let mut meta: Vec<String> = Vec::new();
 
-        let meta = [area.to_owned(), deadline_str]
-            .into_iter()
-            .filter(|s| !s.is_empty())
-            .collect::<Vec<_>>()
-            .join("  ");
+        if let Some(ref area) = project.area_title {
+            meta.push(area.clone());
+        }
 
-        table.add_row(vec![
-            Cell::new(&project.title),
-            Cell::new(counts.dimmed().to_string()),
-            Cell::new(meta.dimmed().to_string()),
-        ]);
+        meta.push(format!("{} tasks", project.task_count));
+
+        if let Some(ref d) = project.deadline {
+            meta.push(format!("due {d}"));
+        }
+
+        let meta_str = meta.join("  ");
+        println!("- [ ] {}  {}", project.title, meta_str.dimmed());
     }
-
-    println!("{table}");
 }
 
 pub fn print_areas(areas: &[Area]) {
@@ -145,7 +191,7 @@ pub fn print_areas(areas: &[Area]) {
         return;
     }
     for area in areas {
-        println!("{}", area.title);
+        println!("- {}", area.title);
     }
 }
 
@@ -155,6 +201,6 @@ pub fn print_tags(tags: &[Tag]) {
         return;
     }
     for tag in tags {
-        println!("{}", tag.title);
+        println!("- #{}", tag.title);
     }
 }

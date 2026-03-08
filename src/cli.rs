@@ -13,10 +13,6 @@ pub struct Cli {
     /// Disable colored output
     #[arg(long, global = true)]
     pub no_color: bool,
-
-    /// Verbose output
-    #[arg(short, long, global = true)]
-    pub verbose: bool,
 }
 
 #[derive(Subcommand)]
@@ -33,9 +29,9 @@ pub enum Command {
     /// Show someday tasks
     Someday,
 
-    /// Show completed tasks
+    /// Show completed and canceled tasks
     Logbook {
-        /// Show tasks completed since this date (YYYY-MM-DD)
+        /// Only show tasks completed since this date (YYYY-MM-DD)
         #[arg(long)]
         since: Option<String>,
 
@@ -46,7 +42,7 @@ pub enum Command {
 
     /// List tasks with filters
     List {
-        /// Filter by project name
+        /// Filter by project
         #[arg(long)]
         project: Option<String>,
 
@@ -63,23 +59,23 @@ pub enum Command {
         deadline: bool,
     },
 
-    /// Show task details
+    /// Show details for a task or project
     Show {
-        /// Task ID (UUID prefix) or title substring
+        /// Ref (e.g. t1, p2) or UUID prefix
         id: String,
     },
 
-    /// Search tasks
+    /// Search tasks by title
     Search {
         /// Search query
         query: String,
 
-        /// Include completed tasks
+        /// Include completed tasks in results
         #[arg(long)]
         include_completed: bool,
     },
 
-    /// Add a new task via Things URL scheme
+    /// Add a new task
     Add {
         /// Task title
         title: String,
@@ -100,7 +96,7 @@ pub enum Command {
         #[arg(long)]
         tags: Option<String>,
 
-        /// Target project or area
+        /// Project or area to add to
         #[arg(long)]
         list: Option<String>,
 
@@ -112,14 +108,52 @@ pub enum Command {
         #[arg(long)]
         checklist: Option<String>,
 
-        /// Reveal task in Things after creating
+        /// Reveal in Things after creating
         #[arg(long)]
         reveal: bool,
     },
 
-    /// Complete or cancel a task
+    /// Edit a task or project
+    Edit {
+        /// Ref (e.g. t1, p2) or UUID prefix
+        id: String,
+
+        /// New title
+        #[arg(long)]
+        title: Option<String>,
+
+        /// New notes (replaces existing)
+        #[arg(long)]
+        notes: Option<String>,
+
+        /// When to start (today, tomorrow, evening, someday, or YYYY-MM-DD)
+        #[arg(long = "when")]
+        when_date: Option<String>,
+
+        /// Deadline (YYYY-MM-DD)
+        #[arg(long)]
+        deadline: Option<String>,
+
+        /// Comma-separated tags (replaces existing)
+        #[arg(long)]
+        tags: Option<String>,
+
+        /// Project or area to move to
+        #[arg(long)]
+        list: Option<String>,
+
+        /// Heading within project
+        #[arg(long)]
+        heading: Option<String>,
+
+        /// Reveal in Things after editing
+        #[arg(long)]
+        reveal: bool,
+    },
+
+    /// Complete or cancel a task or project
     Complete {
-        /// Task ID (UUID prefix) or title substring
+        /// Ref (e.g. t1, p2) or UUID prefix
         id: String,
 
         /// Cancel instead of completing
@@ -134,9 +168,9 @@ pub enum Command {
         area: Option<String>,
     },
 
-    /// Show project detail and its tasks
+    /// Show a project and its tasks
     Project {
-        /// Project name
+        /// Project ref (e.g. p1), UUID prefix, or name
         name: String,
     },
 
@@ -146,7 +180,14 @@ pub enum Command {
     /// List tags
     Tags,
 
-    /// Manage auth token
+    /// Show or clear refs
+    Refs {
+        /// Clear all refs
+        #[arg(long)]
+        clear: bool,
+    },
+
+    /// Manage auth token for write operations
     Auth {
         #[command(subcommand)]
         action: AuthAction,
@@ -160,7 +201,7 @@ pub enum AuthAction {
         /// The auth token
         token: String,
     },
-    /// Show masked auth token
+    /// Show current auth token (masked)
     Show,
     /// Remove auth token
     Clear,
