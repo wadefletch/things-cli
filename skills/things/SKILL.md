@@ -16,44 +16,44 @@ allowed-tools:
 
 ## Core Workflow
 
-1. **List tasks** to get refs: `things today --json`
-2. **Use refs** to inspect or act: `things show t1 --json`, `things complete t1`
+1. **List tasks** to get refs: `things today`
+2. **Use refs** to inspect or act: `things show t1`, `things complete t1`
 3. **Re-list** after mutations to get fresh refs
 
 ```bash
-things today --json
-things show t1 --json
+things today
+things show t1
 things complete t1
-things today --json
+things today
 ```
 
-Always pass `--json` for structured, parseable output.
+The default human output is compact and token-efficient — prefer it for one-shot commands. Use `--json` only when you need to pipe output or parse fields programmatically.
 
 ## Essential Commands
 
 ```bash
-things today --json
-things inbox --json
-things upcoming --json
-things someday --json
-things logbook --json
-things logbook --since 2025-01-01 --limit 20 --json
+things today
+things inbox
+things upcoming
+things someday
+things logbook
+things logbook --since 2025-01-01 --limit 20
 
-things list --project "Website" --json
-things list --tag "urgent" --json
-things list --area "Work" --deadline --json
+things list --project "Website"
+things list --tag "urgent"
+things list --area "Work" --deadline
 
-things show t1 --json
-things search "groceries" --json
-things search "meeting" --include-completed --json
+things show t1
+things search "groceries"
+things search "meeting" --include-completed
 
-things projects --json
-things projects --area "Work" --json
-things project p1 --json
-things project "Website Redesign" --json
+things projects
+things projects --area "Work"
+things project p1
+things project "Website Redesign"
 
-things areas --json
-things tags --json
+things areas
+things tags
 
 things add "Buy milk"
 things add "Write report" --notes "Include Q4 data" --when today --deadline 2025-03-15
@@ -66,6 +66,8 @@ things edit t1 --deadline 2025-04-01 --tags "priority,q2"
 things complete t1
 things complete p2 --cancel
 ```
+
+Append `--json` to any read command when you need structured output for piping or parsing.
 
 ## Ref System
 
@@ -84,8 +86,8 @@ List commands assign short refs to each result: `t1`, `t2` for tasks, `p1`, `p2`
 
 ### Daily Review
 ```bash
-things today --json
-things inbox --json
+things today
+things inbox
 ```
 
 ### Create a Task for Today
@@ -95,7 +97,7 @@ things add "Review PR #42" --when today --list "Engineering" --tags "code-review
 
 ### Move Inbox Tasks
 ```bash
-things inbox --json
+things inbox
 things edit t1 --when today
 things edit t2 --when someday
 things edit t3 --list "Q2 Planning"
@@ -103,18 +105,18 @@ things edit t3 --list "Q2 Planning"
 
 ### Project Review
 ```bash
-things projects --json
-things project p1 --json
+things projects
+things project p1
 ```
 
 ### Check What Got Done
 ```bash
-things logbook --since 2025-03-01 --json
+things logbook --since 2025-03-01
 ```
 
 ### Search and Act
 ```bash
-things search "deploy" --json
+things search "deploy"
 things complete t1
 ```
 
@@ -132,7 +134,7 @@ Check token status: `things auth show`
 
 - **macOS only** — reads the Things 3 SQLite database directly
 - **Writes open Things.app** — `add`, `edit`, `complete` use the `things:///` URL scheme, which activates Things
-- **Always use `--json`** — human output is for terminal display; JSON is for programmatic use
+- **Prefer human output** — it's compact and token-efficient. Only use `--json` when piping or parsing fields programmatically
 - **Read operations are instant** — they query the local SQLite database
 - **Filters use substring matching** — `--project "Web"` matches "Website Redesign"
 - **`--when` accepts keywords** — `today`, `tomorrow`, `evening`, `someday`, or `YYYY-MM-DD`
