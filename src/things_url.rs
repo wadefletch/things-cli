@@ -95,6 +95,8 @@ pub fn update_task(
     tags: Option<&str>,
     list: Option<&str>,
     heading: Option<&str>,
+    checklist_append: Option<&str>,
+    checklist_prepend: Option<&str>,
     reveal: bool,
 ) -> String {
     let mut params = vec![
@@ -115,13 +117,21 @@ pub fn update_task(
         params.push(format!("deadline={}", encode(d)));
     }
     if let Some(t) = tags {
-        params.push(format!("tags={}", encode(t)));
+        params.push(format!("add-tags={}", encode(t)));
     }
     if let Some(l) = list {
         params.push(format!("list={}", encode(l)));
     }
     if let Some(h) = heading {
         params.push(format!("heading={}", encode(h)));
+    }
+    if let Some(c) = checklist_append {
+        let items = c.split(',').map(str::trim).collect::<Vec<_>>().join("\n");
+        params.push(format!("append-checklist-items={}", encode(&items)));
+    }
+    if let Some(c) = checklist_prepend {
+        let items = c.split(',').map(str::trim).collect::<Vec<_>>().join("\n");
+        params.push(format!("prepend-checklist-items={}", encode(&items)));
     }
     if reveal {
         params.push("reveal=true".to_owned());

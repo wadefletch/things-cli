@@ -180,6 +180,14 @@ pub enum Command {
         #[arg(long)]
         heading: Option<String>,
 
+        /// Comma-separated checklist items to append
+        #[arg(long)]
+        checklist_append: Option<String>,
+
+        /// Comma-separated checklist items to prepend
+        #[arg(long)]
+        checklist_prepend: Option<String>,
+
         /// Reveal in Things after editing
         #[arg(long)]
         reveal: bool,

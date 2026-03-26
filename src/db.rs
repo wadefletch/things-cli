@@ -3,7 +3,7 @@ use rusqlite::{params, Connection, OpenFlags};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::models::{Task, TaskType, TaskStatus, StartBucket, real_ts_to_date_string, thingsdate_to_date_string, Project, Area, Tag};
+use crate::models::{Task, TaskType, TaskStatus, StartBucket, real_ts_to_date_string, thingsdate_to_date_string, date_to_thingsdate, Project, Area, Tag};
 
 /// Default Things 3 database path.
 ///
@@ -156,22 +156,61 @@ pub fn tasks_inbox(conn: &Connection) -> Result<Vec<Task>> {
 }
 
 pub fn tasks_upcoming(conn: &Connection) -> Result<Vec<Task>> {
-    // Upcoming = scheduled tasks (start=1 with a startDate, or start=2 with startDate)
-    // In Things, upcoming tasks have start=1 and a non-null startDate in the future
-    // We'll show all tasks with a startDate that haven't been completed
+    let tomorrow = chrono::Local::now().date_naive() + chrono::Duration::days(1);
+    let tomorrow_td = date_to_thingsdate(tomorrow);
     query_tasks(
         conn,
-        "t.type = 0 AND t.status = 0 AND t.startDate IS NOT NULL AND t.trashed = 0",
-        &[],
+        "t.type = 0 AND t.status = 0 AND t.startDate >= ?1 AND t.trashed = 0",
+        &[&tomorrow_td],
     )
 }
 
 pub fn tasks_someday(conn: &Connection) -> Result<Vec<Task>> {
-    query_tasks(
+    let mut tasks = query_tasks(
         conn,
-        "t.type = 0 AND t.status = 0 AND t.start = 2 AND t.trashed = 0",
+        "t.type = 0 AND t.status = 0 AND t.start = 2 AND t.startDate IS NULL AND t.trashed = 0",
         &[],
-    )
+    )?;
+
+    // Some tasks link to a project via heading rather than the project column.
+    // Resolve heading→project so grouping works correctly.
+    let task_uuids: Vec<String> = tasks
+        .iter()
+        .filter(|t| t.project_uuid.is_none())
+        .map(|t| t.uuid.clone())
+        .collect();
+
+    if !task_uuids.is_empty() {
+        let placeholders: Vec<String> = (1..=task_uuids.len()).map(|i| format!("?{i}")).collect();
+        let sql = format!(
+            "SELECT t.uuid, h.project, hp.title \
+             FROM TMTask t \
+             JOIN TMTask h ON t.heading = h.uuid \
+             JOIN TMTask hp ON h.project = hp.uuid \
+             WHERE t.uuid IN ({})",
+            placeholders.join(",")
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let params: Vec<&dyn rusqlite::types::ToSql> = task_uuids.iter().map(|u| u as &dyn rusqlite::types::ToSql).collect();
+        let rows = stmt.query_map(params.as_slice(), |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+        })?;
+        let mut heading_map: HashMap<String, (String, String)> = HashMap::new();
+        for row in rows {
+            let (task_uuid, proj_uuid, proj_title) = row?;
+            heading_map.insert(task_uuid, (proj_uuid, proj_title));
+        }
+        for task in &mut tasks {
+            if task.project_uuid.is_none() {
+                if let Some((puuid, ptitle)) = heading_map.remove(&task.uuid) {
+                    task.project_uuid = Some(puuid);
+                    task.project_title = Some(ptitle);
+                }
+            }
+        }
+    }
+
+    Ok(tasks)
 }
 
 pub fn tasks_logbook(conn: &Connection, since: Option<&str>, limit: usize) -> Result<Vec<Task>> {
@@ -398,6 +437,24 @@ pub fn titles_by_uuids(conn: &Connection, uuids: &[&str]) -> Result<HashMap<Stri
         map.insert(uuid, title);
     }
     Ok(map)
+}
+
+pub fn validate_tags(conn: &Connection, tags: &str) -> Result<()> {
+    let all = all_tags(conn)?;
+    let known: std::collections::HashSet<&str> = all.iter().map(|t| t.title.as_str()).collect();
+    let unknown: Vec<&str> = tags
+        .split(',')
+        .map(str::trim)
+        .filter(|t| !t.is_empty() && !known.contains(t))
+        .collect();
+    if !unknown.is_empty() {
+        anyhow::bail!(
+            "Unknown tag{}: {}",
+            if unknown.len() == 1 { "" } else { "s" },
+            unknown.join(", ")
+        );
+    }
+    Ok(())
 }
 
 pub fn all_tags(conn: &Connection) -> Result<Vec<Tag>> {

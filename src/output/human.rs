@@ -76,6 +76,7 @@ pub fn print_tasks(
     short_ids: &[String],
     project_refs: &HashMap<String, String>,
     scoped_project: Option<&str>,
+    inline_dates: bool,
 ) {
     if tasks.is_empty() {
         println!("{}", "No tasks found.".dimmed());
@@ -93,7 +94,12 @@ pub fn print_tasks(
     for (i, task) in tasks.iter().enumerate() {
         let cb = checkbox(task.status);
         let ref_str = format_ref(task, short_ids.get(i), project_refs, scoped_project);
-        println!("{cb} {}{}", task.title, ref_str.dimmed());
+        let date_prefix = if inline_dates {
+            task.start_date.as_deref().map_or(String::new(), |d| format!("{d} | "))
+        } else {
+            String::new()
+        };
+        println!("{cb} {date_prefix}{}{}", task.title, ref_str.dimmed());
 
         if let Some(ref puuid) = task.project_uuid {
             let is_scoped = scoped_project.is_some_and(|s| s == puuid.as_str());
@@ -114,6 +120,24 @@ pub fn print_tasks(
         for (pref, name) in &used_project_refs {
             println!("  {:<6} {}", pref.dimmed(), name.dimmed());
         }
+    }
+}
+
+pub fn print_project_group(
+    title: &str,
+    proj_ref: &str,
+    proj_uuid: &str,
+    tasks: &[Task],
+    task_refs: &[String],
+) {
+    let meta = format!("[ref={proj_ref}]");
+    println!("  {} {}", title.bold(), meta.dimmed());
+
+    let project_ref_map = HashMap::new();
+    for (i, task) in tasks.iter().enumerate() {
+        let cb = checkbox(task.status);
+        let ref_str = format_ref(task, task_refs.get(i), &project_ref_map, Some(proj_uuid));
+        println!("  {cb} {}{}", task.title, ref_str.dimmed());
     }
 }
 

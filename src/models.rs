@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{Datelike, DateTime, Utc};
 use serde::Serialize;
 
 /// Convert a Things 3 REAL timestamp to `DateTime<Utc>`.
@@ -19,6 +19,14 @@ pub fn real_ts_to_date_string(ts: Option<f64>) -> Option<String> {
 /// `startDate` and `deadline` are stored as bitpacked integers:
 ///   `YYYYYYYYYYYMMMMDDDDD0000000` in binary.
 /// Year occupies bits 16+, month bits 12-15, day bits 7-11.
+/// Encode a `chrono::NaiveDate` into the Things 3 bitpacked integer format.
+pub fn date_to_thingsdate(d: chrono::NaiveDate) -> i32 {
+    let y = d.year();
+    let m = d.month() as i32;
+    let day = d.day() as i32;
+    (y << 16) | (m << 12) | (day << 7)
+}
+
 pub fn thingsdate_to_date_string(val: Option<i32>) -> Option<String> {
     val.and_then(|v| {
         let year = (v >> 16) & 0x7FF;

@@ -14,6 +14,8 @@ pub fn edit(
     tags: Option<&str>,
     list: Option<&str>,
     heading: Option<&str>,
+    checklist_append: Option<&str>,
+    checklist_prepend: Option<&str>,
     reveal: bool,
 ) -> Result<()> {
     let config = Config::load()?;
@@ -29,7 +31,8 @@ pub fn edit(
     let item = resolve::resolve_any(conn, id)?;
 
     let url = things_url::update_task(
-        &item.uuid, token, title, notes, when_date, deadline, tags, list, heading, reveal,
+        &item.uuid, token, title, notes, when_date, deadline, tags, list, heading,
+        checklist_append, checklist_prepend, reveal,
     );
 
     open::that(&url)?;
