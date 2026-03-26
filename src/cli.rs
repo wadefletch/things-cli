@@ -113,6 +113,40 @@ pub enum Command {
         reveal: bool,
     },
 
+    /// Add a new project
+    AddProject {
+        /// Project title
+        title: String,
+
+        /// Notes
+        #[arg(long)]
+        notes: Option<String>,
+
+        /// When to start (today, tomorrow, evening, someday, or YYYY-MM-DD)
+        #[arg(long = "when")]
+        when_date: Option<String>,
+
+        /// Deadline (YYYY-MM-DD)
+        #[arg(long)]
+        deadline: Option<String>,
+
+        /// Comma-separated tags
+        #[arg(long)]
+        tags: Option<String>,
+
+        /// Area to add to
+        #[arg(long)]
+        area: Option<String>,
+
+        /// Comma-separated to-do items to create inside the project
+        #[arg(long)]
+        todos: Option<String>,
+
+        /// Reveal in Things after creating
+        #[arg(long)]
+        reveal: bool,
+    },
+
     /// Edit a task or project
     Edit {
         /// Ref (e.g. t1, p2) or UUID prefix

@@ -103,6 +103,27 @@ fn main() -> Result<()> {
                 reveal,
             )?;
         }
+        Command::AddProject {
+            title,
+            notes,
+            when_date,
+            deadline,
+            tags,
+            area,
+            todos,
+            reveal,
+        } => {
+            commands::add::add_project(
+                &title,
+                notes.as_deref(),
+                when_date.as_deref(),
+                deadline.as_deref(),
+                tags.as_deref(),
+                area.as_deref(),
+                todos.as_deref(),
+                reveal,
+            )?;
+        }
         Command::Auth { action } => match action {
             AuthAction::Set { token } => commands::auth::set_token(&token)?,
             AuthAction::Show => commands::auth::show_token()?,
@@ -176,7 +197,7 @@ fn main() -> Result<()> {
                 Command::Areas => commands::areas::list_areas(&conn, cli.json)?,
                 Command::Tags => commands::tags::list_tags(&conn, cli.json)?,
                 Command::Refs { clear } => commands::refs::list_refs(&conn, clear)?,
-                Command::Add { .. } | Command::Auth { .. } => {
+                Command::Add { .. } | Command::AddProject { .. } | Command::Auth { .. } => {
                     // Already handled in the outer match
                 }
             }

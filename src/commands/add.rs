@@ -18,3 +18,19 @@ pub fn add(
     println!("Created task: {title}");
     Ok(())
 }
+
+pub fn add_project(
+    title: &str,
+    notes: Option<&str>,
+    when_date: Option<&str>,
+    deadline: Option<&str>,
+    tags: Option<&str>,
+    area: Option<&str>,
+    todos: Option<&str>,
+    reveal: bool,
+) -> Result<()> {
+    let url = things_url::add_project(title, notes, when_date, deadline, tags, area, todos, reveal);
+    open::that(&url)?;
+    println!("Created project: {title}");
+    Ok(())
+}

@@ -44,6 +44,45 @@ pub fn add_task(
     format!("things:///add?{}", params.join("&"))
 }
 
+/// Build a Things URL scheme URL for creating a project.
+pub fn add_project(
+    title: &str,
+    notes: Option<&str>,
+    when_date: Option<&str>,
+    deadline: Option<&str>,
+    tags: Option<&str>,
+    area: Option<&str>,
+    todos: Option<&str>,
+    reveal: bool,
+) -> String {
+    let mut params = vec![format!("title={}", encode(title))];
+
+    if let Some(n) = notes {
+        params.push(format!("notes={}", encode(n)));
+    }
+    if let Some(w) = when_date {
+        params.push(format!("when={}", encode(w)));
+    }
+    if let Some(d) = deadline {
+        params.push(format!("deadline={}", encode(d)));
+    }
+    if let Some(t) = tags {
+        params.push(format!("tags={}", encode(t)));
+    }
+    if let Some(a) = area {
+        params.push(format!("area={}", encode(a)));
+    }
+    if let Some(t) = todos {
+        let items = t.split(',').map(str::trim).collect::<Vec<_>>().join("\n");
+        params.push(format!("to-dos={}", encode(&items)));
+    }
+    if reveal {
+        params.push("reveal=true".to_owned());
+    }
+
+    format!("things:///add-project?{}", params.join("&"))
+}
+
 /// Build a Things URL for updating a task (requires auth token).
 #[allow(clippy::too_many_arguments)]
 pub fn update_task(
