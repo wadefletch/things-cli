@@ -1,0 +1,19 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "things-cli",
+  "description": "CLI for Things 3 task management on macOS",
+  "owner": {
+    "name": "Wade Fletcher",
+    "email": "wade@wadefletch.com"
+  },
+  "plugins": [
+    {
+      "name": "things",
+      "description": "Manage Things 3 tasks, projects, and areas from the command line",
+      "source": "./",
+      "strict": false,
+      "skills": ["./skills/things"],
+      "category": "productivity"
+    }
+  ]
+}
